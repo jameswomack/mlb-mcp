@@ -6,6 +6,9 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 from pybaseball import (
+    batting_stats_bref,
+    bwar_bat,
+    bwar_pitch,
     get_splits,
     pitching_stats,
     pitching_stats_bref,
@@ -25,12 +28,14 @@ from mlb_stats_mcp.utils.logging_config import setup_logging
 logger = setup_logging("pybaseball_supp_tools")
 
 
-def _convert_dataframe_to_dict(df: pd.DataFrame) -> Dict[str, Any]:
+def _convert_dataframe_to_dict(df: pd.DataFrame, include_index: bool = False, index_name: str = "Split") -> Dict[str, Any]:
     """
     Convert a pandas DataFrame to a dictionary for JSON serialization.
 
     Args:
         df: The pandas DataFrame to convert
+        include_index: If True, reset the index to include it as a column
+        index_name: Name to use for the index column when include_index=True
 
     Returns:
         Dictionary representation of the DataFrame
@@ -41,10 +46,19 @@ def _convert_dataframe_to_dict(df: pd.DataFrame) -> Dict[str, Any]:
 
     try:
         df_clean = df.copy()
+        
+        # If requested, include the index as a column (useful for splits data where
+        # the split type is stored as the index, e.g., "vs LHP", "vs RHP")
+        if include_index:
+            df_clean = df_clean.reset_index()
+            # Rename 'index' column to the specified name if the index was unnamed
+            if 'index' in df_clean.columns:
+                df_clean = df_clean.rename(columns={'index': index_name})
+        
         df_clean = df_clean.where(pd.notnull(df_clean), None)
         df_clean = df_clean.replace("", None)
         records = df_clean.to_dict(orient="records")
-        return {"data": records, "count": len(records), "columns": df.columns.tolist()}
+        return {"data": records, "count": len(records), "columns": df_clean.columns.tolist()}
 
     except Exception as e:
         logger.error(f"Error in DF processing - {e}")
@@ -81,6 +95,94 @@ async def get_pitching_stats_bref(season: Optional[int] = None) -> Dict[str, Any
         return _convert_dataframe_to_dict(df)
     except Exception as e:
         error_msg = f"Error retrieving pitching stats from Baseball Reference: {e!s}"
+        logger.error(error_msg)
+        raise Exception(error_msg) from e
+
+
+async def get_batting_stats_bref(season: Optional[int] = None) -> Dict[str, Any]:
+    """
+    Get batting stats from Baseball Reference for a given season.
+
+    Args:
+        season: The season to get data for. If None, pulls data for current year.
+
+    Returns:
+        Dictionary containing batting stats from Baseball Reference
+
+    Raises:
+        Exception: If there's an error retrieving batting stats
+    """
+    try:
+        logger.debug(f"Retrieving Baseball Reference batting stats for season: {season}")
+
+        df = batting_stats_bref(season)
+
+        if len(df) == 0:
+            raise Exception("No batting stats data found")
+
+        logger.debug(f"Retrieved {len(df)} batting stats records from Baseball Reference")
+
+        return _convert_dataframe_to_dict(df)
+    except Exception as e:
+        error_msg = f"Error retrieving batting stats from Baseball Reference: {e!s}"
+        logger.error(error_msg)
+        raise Exception(error_msg) from e
+
+
+async def get_bwar_bat(season: int) -> Dict[str, Any]:
+    """
+    Get Baseball Reference WAR (bWAR) for batters in a given season.
+    Returns mlb_ID (MLBAM), name, and WAR for each batter.
+
+    Args:
+        season: The season to get bWAR data for.
+
+    Returns:
+        Dictionary containing bWAR data for batters
+    """
+    try:
+        logger.debug(f"Retrieving bWAR batting data for season: {season}")
+
+        df = bwar_bat(return_all=False)
+        df = df[df['year_ID'] == season]
+
+        if len(df) == 0:
+            raise Exception(f"No bWAR batting data found for {season}")
+
+        logger.debug(f"Retrieved {len(df)} bWAR batting records for {season}")
+
+        return _convert_dataframe_to_dict(df)
+    except Exception as e:
+        error_msg = f"Error retrieving bWAR batting data: {e!s}"
+        logger.error(error_msg)
+        raise Exception(error_msg) from e
+
+
+async def get_bwar_pitch(season: int) -> Dict[str, Any]:
+    """
+    Get Baseball Reference WAR (bWAR) for pitchers in a given season.
+    Returns mlb_ID (MLBAM), name, and WAR for each pitcher.
+
+    Args:
+        season: The season to get bWAR data for.
+
+    Returns:
+        Dictionary containing bWAR data for pitchers
+    """
+    try:
+        logger.debug(f"Retrieving bWAR pitching data for season: {season}")
+
+        df = bwar_pitch(return_all=False)
+        df = df[df['year_ID'] == season]
+
+        if len(df) == 0:
+            raise Exception(f"No bWAR pitching data found for {season}")
+
+        logger.debug(f"Retrieved {len(df)} bWAR pitching records for {season}")
+
+        return _convert_dataframe_to_dict(df)
+    except Exception as e:
+        error_msg = f"Error retrieving bWAR pitching data: {e!s}"
         logger.error(error_msg)
         raise Exception(error_msg) from e
 
@@ -308,17 +410,29 @@ async def get_player_splits(
 
         if player_info:
             df, info_dict = result
-            splits_data = _convert_dataframe_to_dict(df)
+            splits_data = _convert_dataframe_to_dict(df, include_index=True, index_name="Split")
             splits_data["player_info"] = info_dict
             return splits_data
         else:
+            # pybaseball sometimes returns a tuple instead of a DataFrame
+            # (e.g., pitching splits for some players). Extract the first
+            # DataFrame if that happens.
             df = result
-            return _convert_dataframe_to_dict(df)
+            if isinstance(df, tuple):
+                logger.warning(
+                    f"get_splits returned tuple for {playerid} — extracting first element"
+                )
+                df = df[0] if len(df) > 0 else pd.DataFrame()
+            return _convert_dataframe_to_dict(df, include_index=True, index_name="Split")
 
     except Exception as e:
         error_msg = f"Error retrieving splits for player {playerid}: {e!s}"
-        logger.error(error_msg)
-        raise Exception(error_msg) from e
+        logger.warning(error_msg)
+        return {
+            "data": [],
+            "count": 0,
+            "error": error_msg,
+        }
 
 
 async def get_standings(season: Optional[int] = None) -> Dict[str, Any]:
