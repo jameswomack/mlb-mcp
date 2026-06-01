@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(PORT=12000 uv run *)",
+      "Bash(lsof *)",
+      "Bash(open *)"
+    ]
+  }
+}
