@@ -75,7 +75,7 @@ def mcp_tool_wrapper(func):
             raise Exception(f"Error in {func.__name__}: {e!s}") from e
 
     # Copy the signature from the original function
-    wrapper.__signature__ = sig
+    wrapper.__signature__ = sig # type: ignore
 
     # Register the tool with MCP
     return mcp.tool(name=func.__name__, description=func.__doc__)(wrapper)
@@ -344,7 +344,7 @@ async def get_statcast_pitcher_data(
         end_dt : YYYY-MM-DD : the final date for which you want data
         player_id : INT :
             the player's MLBAM ID.
-            Find this by calling pthe get_playerid_lookup tool,
+            Find this by calling the get_playerid_lookup tool,
             finding the correct player, and selecting their key_mlbam.
         start_row: optional (defaults to None) :
             starting row index for truncating large results (0-based, inclusive)
@@ -629,7 +629,7 @@ async def create_spraychart_plot(
     height: int = 500,
 ) -> Dict[str, Any]:
     """
-    Produces a spraychart using statcast data overlayed on specified stadium
+    Produces a spraychart using statcast data overlaid on specified stadium
 
 
     Args:
@@ -894,12 +894,12 @@ async def get_top_prospects(
     player_type: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Retrieves the top prospects by team or leaguewide.
+    Retrieves the top prospects by team or league-wide.
         It can return top prospect pitchers, batters, or both.
 
     ARGUMENTS
     team: The team name for which you wish to retrieve top prospects. If not specified,
-        the function will return leaguewide top prospects.
+        the function will return league-wide top prospects.
     playerType: Either "pitchers" or "batters".
         If not specified, the function will return top prospects for both
         pitchers and batters.
