@@ -3,10 +3,12 @@ Statcast tool implementations for pybaseball statcast functions
 """
 
 import datetime
+import io
 import json
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 import pandas as pd
+import requests
 from pybaseball import (
     statcast,
     statcast_batter,
@@ -21,6 +23,7 @@ from pybaseball import (
     statcast_pitcher_pitch_arsenal,
     statcast_single_game,
 )
+from pybaseball.utils import sanitize_statcast_columns
 
 from mlb_stats_mcp.utils.logging_config import setup_logging
 
@@ -28,6 +31,56 @@ from mlb_stats_mcp.utils.logging_config import setup_logging
 logger = setup_logging("statcast_tools")
 
 LENGTH_LIMIT = 1048576 // 2
+
+
+def _fetch_savant_csv(url: str) -> pd.DataFrame:
+    """Fetch a Baseball Savant CSV with robust parsing.
+
+    pybaseball's built-in functions sometimes fail with 'Error tokenizing data'
+    because the C CSV parser chokes on the BOM + quoted-comma header that
+    Baseball Savant returns.  This helper strips the BOM and falls back to the
+    Python CSV engine when needed.
+    """
+    res = requests.get(url, timeout=30).content
+    text = res.decode("utf-8-sig")          # strip BOM automatically
+    try:
+        df = pd.read_csv(io.StringIO(text))
+    except pd.errors.ParserError:
+        logger.warning("C parser failed, retrying with Python engine")
+        try:
+            df = pd.read_csv(io.StringIO(text), engine="python")
+        except pd.errors.ParserError:
+            logger.warning(
+                "Python engine also failed, retrying with on_bad_lines='skip'"
+            )
+            df = pd.read_csv(
+                io.StringIO(text), engine="python", on_bad_lines="skip"
+            )
+    df = sanitize_statcast_columns(df)
+    return df
+
+
+def _safe_exitvelo_barrels(
+    kind: str, year: int, minBBE: Union[int, str, None] = None
+) -> pd.DataFrame:
+    """Fetch exit-velo / barrel data, falling back to direct URL fetch."""
+    min_val = minBBE if minBBE is not None else "q"
+    url = (
+        f"https://baseballsavant.mlb.com/leaderboard/statcast"
+        f"?type={kind}&year={year}&position=&team=&min={min_val}&csv=true"
+    )
+    pybaseball_fn = (
+        statcast_batter_exitvelo_barrels if kind == "batter"
+        else statcast_pitcher_exitvelo_barrels
+    )
+    try:
+        return pybaseball_fn(year, minBBE)
+    except Exception as first_err:
+        logger.warning(
+            f"pybaseball {kind} exitvelo failed ({first_err!s}), "
+            "falling back to direct fetch"
+        )
+        return _fetch_savant_csv(url)
 
 
 def _convert_dataframe_to_dict(
@@ -344,8 +397,7 @@ async def get_statcast_batter_exitvelo_barrels(
             f"with minimum BBE: {minBBE if minBBE is not None else 'qualified'}"
         )
 
-        # Call pybaseball's statcast_batter_exitvelo_barrels function
-        df = statcast_batter_exitvelo_barrels(year, minBBE)
+        df = _safe_exitvelo_barrels("batter", year, minBBE)
 
         if len(df) == 0:
             raise Exception("No statcast data found")
@@ -400,8 +452,7 @@ async def get_statcast_pitcher_exitvelo_barrels(
             f"with minimum BBE: {minBBE if minBBE is not None else 'qualified'}"
         )
 
-        # Call pybaseball's statcast_pitcher_exitvelo_barrels function
-        df = statcast_pitcher_exitvelo_barrels(year, minBBE)
+        df = _safe_exitvelo_barrels("pitcher", year, minBBE)
 
         if len(df) == 0:
             raise Exception("No statcast data found")
@@ -729,8 +780,20 @@ async def get_statcast_pitcher_pitch_arsenal(
             f"and arsenal type: {arsenal_type}"
         )
 
-        # Call pybaseball's statcast_pitcher_pitch_arsenal function
-        df = statcast_pitcher_pitch_arsenal(year, minP, arsenal_type)
+        # Call pybaseball with fallback to direct fetch for CSV parsing errors
+        try:
+            df = statcast_pitcher_pitch_arsenal(year, minP, arsenal_type)
+        except Exception as first_err:
+            logger.warning(
+                f"pybaseball pitcher pitch arsenal failed ({first_err!s}), "
+                "falling back to direct fetch"
+            )
+            min_val = minP if minP is not None else 250
+            url = (
+                f"https://baseballsavant.mlb.com/leaderboard/pitch-arsenals"
+                f"?year={year}&min={min_val}&type={arsenal_type}&hand=&csv=true"
+            )
+            df = _fetch_savant_csv(url)
 
         if len(df) == 0:
             raise Exception("No statcast data found")
