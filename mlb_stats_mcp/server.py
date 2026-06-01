@@ -707,6 +707,33 @@ async def get_pitching_stats_bref(season: Optional[int] = None) -> Dict[str, Any
 
 
 @mcp_tool_wrapper
+async def get_batting_stats_bref(season: Optional[int] = None) -> Dict[str, Any]:
+    """
+    Get all batting stats from Baseball Reference for a set season. If no argument
+    is supplied, gives stats for current season to date.
+    """
+    return await pybaseball_supp_tools.get_batting_stats_bref(season)
+
+
+@mcp_tool_wrapper
+async def get_bwar_bat(season: int) -> Dict[str, Any]:
+    """
+    Get Baseball Reference WAR (bWAR) for batters in a given season.
+    Returns mlb_ID (MLBAM player ID), player name, and WAR value.
+    """
+    return await pybaseball_supp_tools.get_bwar_bat(season)
+
+
+@mcp_tool_wrapper
+async def get_bwar_pitch(season: int) -> Dict[str, Any]:
+    """
+    Get Baseball Reference WAR (bWAR) for pitchers in a given season.
+    Returns mlb_ID (MLBAM player ID), player name, and WAR value.
+    """
+    return await pybaseball_supp_tools.get_bwar_pitch(season)
+
+
+@mcp_tool_wrapper
 async def get_pitching_stats_range(
     start_dt: str,
     end_dt: Optional[str] = None,

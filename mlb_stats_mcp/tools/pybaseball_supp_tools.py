@@ -143,11 +143,21 @@ async def get_bwar_bat(season: int) -> Dict[str, Any]:
     try:
         logger.debug(f"Retrieving bWAR batting data for season: {season}")
 
-        df = bwar_bat(return_all=False)
+        df = bwar_bat(return_all=True)
         df = df[df['year_ID'] == season]
 
         if len(df) == 0:
             raise Exception(f"No bWAR batting data found for {season}")
+
+        # Select only the columns we need (keep payload small)
+        keep_cols = [
+            'name_common', 'mlb_ID', 'player_ID', 'year_ID', 'team_ID',
+            'stint_ID', 'lg_ID', 'pitcher', 'G', 'PA', 'salary',
+            'runs_above_avg', 'runs_above_avg_off', 'runs_above_avg_def',
+            'WAR_rep', 'WAA', 'WAR', 'WAR_off', 'WAR_def',
+        ]
+        available = [c for c in keep_cols if c in df.columns]
+        df = df[available]
 
         logger.debug(f"Retrieved {len(df)} bWAR batting records for {season}")
 
