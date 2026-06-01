@@ -948,7 +948,10 @@ def create_fastapi_app() -> FastAPI:
     app = FastAPI(lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3000"],  # Your Next.js dev server
+        allow_origins=[
+            "http://localhost:3000",
+            "http://localhost:3001",
+        ],  # Your Next.js dev server
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

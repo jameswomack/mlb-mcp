@@ -3,7 +3,7 @@ services:
   baseball-mcp:
     build: .
     ports:
-      - "8000:8000"
+      - "12000:8081"
     volumes:
       - ./mlb_stats_mcp:/app/mlb_stats_mcp # Mount source code
       - ./.env:/app/.env # Mount env file too
