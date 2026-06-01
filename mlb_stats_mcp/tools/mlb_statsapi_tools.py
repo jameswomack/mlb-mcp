@@ -212,7 +212,7 @@ async def get_standings(
 async def get_team_roster(
     team_id: int,
     roster_type: str = "active",
-    season: int = 2025,
+    season: int = 2026,
     date: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
