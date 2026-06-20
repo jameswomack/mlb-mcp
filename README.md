@@ -33,7 +33,7 @@ A Python project that creates a Model Context Protocol (MCP) server for accessin
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-2. Create and activate a virtual environment:
+1. Create and activate a virtual environment:
 
 ```bash
 uv venv
@@ -42,7 +42,7 @@ source .venv/bin/activate  # On Unix/macOS
 .venv\Scripts\activate  # On Windows
 ```
 
-3. Install dependencies:
+1. Install dependencies:
 
 ```bash
 uv pip install -e .
@@ -121,17 +121,10 @@ This project uses [Ruff](https://github.com/astral-sh/ruff) for linting and code
 
 ### Setup Pre-commit Hooks
 
-1. Install pre-commit:
-
-```bash
-pip install pre-commit
-```
-
+1. Install pre-commit
+   - `pip install pre-commit`
 2. Initialize pre-commit hooks:
-
-```bash
-pre-commit install
-```
+   - `pre-commit install`
 
 Now, the linting checks will run automatically whenever you commit code. You can also run them manually:
 

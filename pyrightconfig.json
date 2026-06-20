@@ -3,6 +3,7 @@
   "venv": ".venv",
   "pythonVersion": "3.12",
   "pythonPlatform": "Darwin",
+  "typeCheckingMode": "off",
   "include": [
     "mlb_stats_mcp"
   ],
