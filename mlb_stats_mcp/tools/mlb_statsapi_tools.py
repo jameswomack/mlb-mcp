@@ -201,6 +201,14 @@ async def get_standings(
         logger.debug(f"Retrieving standings with params: {kwargs}")
         result = statsapi.standings_data(**kwargs)
         logger.debug(f"Retrieved standings data for {standings_types}")
+
+        # statsapi.standings_data() returns a dict keyed by integer division
+        # IDs (e.g. 200, 201, 202). MCP structured output validates object
+        # keys as strings, so the raw int keys raise a wrapperOutput
+        # validation error. JSON object keys are strings anyway, so coerce the
+        # top-level keys to keep the tool's output schema valid.
+        if isinstance(result, dict):
+            result = {str(div_id): division for div_id, division in result.items()}
         return result
     except Exception as e:
         error_msg = f"Error retrieving standings: {e!s}"
