@@ -6,6 +6,28 @@
 
 A Python project that creates a Model Context Protocol (MCP) server for accessing MLB statistics data through the MLB Stats API and `pybaseball` library for statcast, fangraphs, and baseball reference statistics. This server provides structured API access to baseball statistics that can be used with MCP-compatible clients.
 
+## Quick start (Docker)
+
+The server's primary runtime is **Docker over Streamable HTTP**. Build, start, and verify:
+
+```bash
+docker compose up -d --build            # build image + start → http://localhost:12000/mcp
+docker compose logs -f baseball-mcp     # wait for "Uvicorn running on http://0.0.0.0:8081"
+```
+
+Confirm it is serving tools (prints the HTTP status code and the parsed JSON payload):
+
+```bash
+curl -sS -X POST http://localhost:12000/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -w '\nHTTP %{http_code}\n' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
+  | sed -n -e 's/^data: //p' -e '/^HTTP /p'
+```
+
+See [Running with Docker](#running-with-docker-http-transport) for the full command reference, verification, and troubleshooting.
+
 ## Project Structure
 
 - `mlb_stats_mcp/` - Main package directory
@@ -24,6 +46,12 @@ A Python project that creates a Model Context Protocol (MCP) server for accessin
 - `.github/` - GitHub Actions workflows
 
 ## Tools
+
+The server exposes 50+ MCP tools spanning the MLB Stats API, Statcast,
+`pybaseball` plotting, and supplemental `pybaseball` data sources. Call the MCP
+`tools/list` method (see [Running with Docker](#running-with-docker-http-transport)
+below) for the authoritative list, or browse the implementations under
+`mlb_stats_mcp/tools/`.
 
 ## Setup
 
@@ -66,6 +94,75 @@ uv run pytest -v
 
 Tests verify all MLB StatsAPI tools work correctly with the MCP protocol, establishing connections, making API calls, and processing responses.
 
+## Running with Docker (HTTP transport)
+
+In addition to stdio, the server can run over **Streamable HTTP**, which is how
+non-stdio clients (for example the `mlb-projections` API) consume it, via the
+provided `docker-compose.yml`.
+
+### Common commands
+
+```bash
+docker compose up -d --build          # build image + start in the background
+docker compose build baseball-mcp     # rebuild the image (dependency/Dockerfile changes)
+docker compose restart baseball-mcp   # reload Python edits (source is bind-mounted)
+docker compose logs -f baseball-mcp   # follow logs ("Uvicorn running on http://0.0.0.0:8081")
+docker compose down                   # stop and remove the container
+```
+
+Notes on the Compose service:
+
+- It publishes the in-container port `8081` on host port `12000` (endpoint `/mcp`).
+- `restart: unless-stopped` makes the container return automatically after
+  Docker Desktop or the host restarts.
+- `./mlb_stats_mcp` is bind-mounted, so `docker compose restart baseball-mcp`
+  picks up Python edits; `docker compose build` is only needed for dependency
+  changes or to bake a change into the image itself (e.g. for Smithery).
+
+> If a `docker` command hangs, Docker Desktop is probably still starting or
+> wedged — wait or restart Docker Desktop, then retry. (Non-interactive
+> scripts/agents that cannot Ctrl-C should wrap calls in a timeout; note that
+> macOS has no `timeout` built in.)
+
+### Verifying the server
+
+Responses are JSON-RPC over Server-Sent Events, so print the status code and pipe
+through `sed` to read the JSON payload (the `-e '/^HTTP /p'` keeps the status
+line, which the `data:` filter would otherwise drop):
+
+```bash
+curl -sS -X POST http://localhost:12000/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -w '\nHTTP %{http_code}\n' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
+  | sed -n -e 's/^data: //p' -e '/^HTTP /p'
+```
+
+Call a real tool to confirm live data end-to-end:
+
+```bash
+curl -sS -X POST http://localhost:12000/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -w '\nHTTP %{http_code}\n' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_standings","arguments":{"season":2024,"league_id":104}}}' \
+  | sed -n -e 's/^data: //p' -e '/^HTTP /p'
+```
+
+Expect `HTTP 200` and a JSON-RPC `result`. A plain `GET /mcp` returns
+`406 Not Acceptable` — this is expected, because the Streamable HTTP transport
+requires the `Accept: application/json, text/event-stream` header.
+
+### Reaching the server from another container
+
+The HTTP transport enables the MCP SDK's DNS-rebinding protection, which by
+default only allows `localhost` Host headers. When another container (such as
+the `mlb-projections` API in its own Compose stack) connects via
+`host.docker.internal:12000`, that host is allowed out of the box. To permit
+additional hosts/origins without code changes, set `MCP_ALLOWED_HOSTS` and/or
+`MCP_ALLOWED_ORIGINS` (see [Environment Variables](#environment-variables)).
+
 ## Environment Variables
 
 The project uses environment variables stored in `.env` to configure settings.
@@ -78,6 +175,18 @@ The MLB Stats MCP Server supports configurable logging via environment variables
 
 - `MLB_STATS_LOG_LEVEL` - Sets the logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
 - `MLB_STATS_LOG_FILE` - Path to log file (if not set, logs to stdout)
+
+### HTTP Transport
+
+These apply when running over Streamable HTTP (`python -m mlb_stats_mcp.server --http`,
+which is what the Docker image runs):
+
+- `PORT` - Port the HTTP server binds to inside the process (default `8081`).
+- `MCP_ALLOWED_HOSTS` - Comma-separated extra `Host` header values permitted by
+  the transport's DNS-rebinding protection (e.g. `host.docker.internal:*`).
+  The localhost variants and `host.docker.internal` are allowed by default;
+  `host:port` patterns support `*` (e.g. `mcp.internal:*`).
+- `MCP_ALLOWED_ORIGINS` - Comma-separated extra `Origin` header values permitted.
 
 ## Claude Desktop Integration
 
