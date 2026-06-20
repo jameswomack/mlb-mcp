@@ -29,8 +29,44 @@ load_dotenv()
 # Initialize logging for the server
 logger = setup_logging("mcp_server")
 
-# Initialize FastMCP server
-mcp = FastMCP("baseball", stateless_http=True)
+
+def _csv_env(name: str) -> list[str]:
+    """Parse a comma-separated environment variable into a list of values."""
+    return [item.strip() for item in os.environ.get(name, "").split(",") if item.strip()]
+
+
+# Initialize FastMCP server.
+#
+# FastMCP enables DNS-rebinding protection on the streamable-HTTP transport and
+# only allows localhost Host headers by default. The mlb-projections API reaches
+# this server from another container via host.docker.internal, which would be
+# rejected with HTTP 421. Allow that host explicitly (plus any extra entries from
+# MCP_ALLOWED_HOSTS / MCP_ALLOWED_ORIGINS) while keeping protection enabled.
+_mcp_kwargs: Dict[str, Any] = {"stateless_http": True}
+try:
+    from mcp.server.transport_security import TransportSecuritySettings
+
+    _mcp_kwargs["transport_security"] = TransportSecuritySettings(
+        allowed_hosts=[
+            "127.0.0.1:*",
+            "localhost:*",
+            "[::1]:*",
+            "host.docker.internal:*",
+            *_csv_env("MCP_ALLOWED_HOSTS"),
+        ],
+        allowed_origins=[
+            "http://127.0.0.1:*",
+            "http://localhost:*",
+            "http://[::1]:*",
+            "http://host.docker.internal:*",
+            *_csv_env("MCP_ALLOWED_ORIGINS"),
+        ],
+    )
+except ImportError:
+    # Older mcp SDKs without transport-security settings: nothing to configure.
+    pass
+
+mcp = FastMCP("baseball", **_mcp_kwargs)
 
 
 # Automatically register all prompt functions from prompts.py
